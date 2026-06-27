@@ -1,0 +1,15 @@
+# Build output
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local config / secret overrides (keep config.toml; ignore personal overrides)
+*.local.toml
+.env
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

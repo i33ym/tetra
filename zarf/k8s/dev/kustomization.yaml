@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: tetra-system
+
+resources:
+  - ../base
+
+# Map the image placeholders in the base manifests to the locally built images
+# (loaded into KIND via `make dev/load`). Non-:latest tags default to an
+# IfNotPresent pull policy, so KIND uses the loaded image without a registry.
+images:
+  - name: tetra-image
+    newName: tetra
+    newTag: "0.0.1"
+  - name: tetra-worker-image
+    newName: tetra-worker
+    newTag: "0.0.1"
+  - name: tetra-mockproc-image
+    newName: tetra-mockproc
+    newTag: "0.0.1"

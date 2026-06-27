@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tetra-config
+  namespace: tetra-system
+data:
+  TETRA_DB_HOST: "database:5432"
+  TETRA_DB_NAME: "tetra"
+  TETRA_DB_USER: "postgres"
+  TETRA_MINIO_ENDPOINT: "minio:9000"
+  TETRA_MINIO_BUCKET: "tetra-payloads"
+  TETRA_OTEL_HOST: "otel-collector:4317"
+  TETRA_PROCESSOR_URL: "http://mockproc:7000/process"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tetra-secret
+  namespace: tetra-system
+type: Opaque
+stringData:
+  TETRA_DB_PASSWORD: "postgres"
+  TETRA_MINIO_ACCESS_KEY: "minioadmin"
+  TETRA_MINIO_SECRET_KEY: "minioadmin"

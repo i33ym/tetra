@@ -1,0 +1,48 @@
+# Tetra service configuration (local development defaults).
+# Every value can be overridden by a TETRA_* environment variable so the same
+# image works in docker-compose and k8s without editing this file.
+
+[http]
+api_host            = "0.0.0.0:3000"
+debug_host          = "0.0.0.0:3010"
+read_timeout        = "0s"      # 0 = unlimited (large uploads)
+read_header_timeout = "10s"
+write_timeout       = "0s"      # 0 = unlimited (large downloads)
+idle_timeout        = "120s"
+shutdown_timeout    = "20s"
+cors_origins        = ["*"]
+max_upload_bytes    = 104857600 # 100 MiB
+
+[db]
+user           = "postgres"
+password       = "postgres"
+host           = "localhost:5432"
+name           = "tetra"
+max_open_conns = 10
+max_idle_conns = 5
+disable_tls    = true
+
+[minio]
+endpoint   = "localhost:9000"
+access_key = "minioadmin"
+secret_key = "minioadmin"
+bucket     = "tetra-payloads"
+use_ssl    = false
+region     = "us-east-1"
+
+[otel]
+service_name = "tetra"
+host         = "localhost:4317"  # otel-collector OTLP gRPC; empty disables tracing
+probability  = 1.0
+
+[worker]
+concurrency   = 8
+poll_interval = "500ms"
+lease_seconds = 60
+max_attempts  = 5
+backoff_base  = "5s"
+inproc        = false            # true runs the worker inside the API process
+
+[processor]
+url     = "http://localhost:7000/process"
+timeout = "30s"

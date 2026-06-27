@@ -1,0 +1,4 @@
+.git
+zarf/k8s
+*.md
+**/*_test.go

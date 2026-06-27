@@ -1,0 +1,30 @@
+# Build stage: compile the mock processor (static binary).
+FROM golang:1.26 AS build
+ENV CGO_ENABLED=0
+ARG BUILD_REF=develop
+
+WORKDIR /service
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -ldflags "-X main.tag=${BUILD_REF}" -o /mockproc ./api/services/mockproc
+
+# Runtime stage.
+FROM alpine:3.23
+ARG BUILD_DATE
+ARG BUILD_REF
+
+RUN addgroup -g 1000 -S tetra && adduser -u 1000 -S tetra -G tetra
+
+COPY --from=build --chown=tetra:tetra /mockproc /service/mockproc
+
+WORKDIR /service
+USER tetra
+CMD ["./mockproc"]
+
+LABEL org.opencontainers.image.title="tetra-mockproc" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${BUILD_REF}"

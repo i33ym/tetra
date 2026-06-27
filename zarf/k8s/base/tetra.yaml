@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tetra
+  namespace: tetra-system
+spec:
+  selector:
+    app: tetra
+  ports:
+    - name: api
+      port: 3000
+      targetPort: 3000
+    - name: metrics
+      port: 3010
+      targetPort: 3010
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tetra
+  namespace: tetra-system
+spec:
+  # No replicas here — the HorizontalPodAutoscaler owns the replica count.
+  selector:
+    matchLabels:
+      app: tetra
+  template:
+    metadata:
+      labels:
+        app: tetra
+    spec:
+      initContainers:
+        - name: init-migrate
+          image: tetra-image
+          command: ["/bin/sh", "-c", "./admin migrate-up && ./admin minio-bootstrap"]
+          envFrom:
+            - configMapRef:
+                name: tetra-config
+            - secretRef:
+                name: tetra-secret
+      containers:
+        - name: tetra
+          image: tetra-image
+          ports:
+            - name: api
+              containerPort: 3000
+            - name: metrics
+              containerPort: 3010
+          envFrom:
+            - configMapRef:
+                name: tetra-config
+            - secretRef:
+                name: tetra-secret
+          env:
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+                  divisor: "1"
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KUBERNETES_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KUBERNETES_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: KUBERNETES_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          readinessProbe:
+            httpGet:
+              path: /v1/readiness
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /v1/liveness
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tetra
+  namespace: tetra-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tetra
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

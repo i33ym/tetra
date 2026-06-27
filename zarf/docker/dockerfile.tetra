@@ -1,0 +1,33 @@
+# Build stage: compile the tetra API and the admin tool (static binaries).
+FROM golang:1.26 AS build
+ENV CGO_ENABLED=0
+ARG BUILD_REF=develop
+
+WORKDIR /service
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -ldflags "-X main.tag=${BUILD_REF}" -o /tetra ./api/services/tetra
+RUN go build -ldflags "-X main.tag=${BUILD_REF}" -o /admin ./api/tooling/admin
+
+# Runtime stage: minimal non-root alpine image with both binaries.
+FROM alpine:3.23
+ARG BUILD_DATE
+ARG BUILD_REF
+
+RUN addgroup -g 1000 -S tetra && adduser -u 1000 -S tetra -G tetra
+
+COPY --from=build --chown=tetra:tetra /tetra /service/tetra
+COPY --from=build --chown=tetra:tetra /admin /service/admin
+COPY --from=build --chown=tetra:tetra /service/config.toml /service/config.toml
+
+WORKDIR /service
+USER tetra
+CMD ["./tetra"]
+
+LABEL org.opencontainers.image.title="tetra" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${BUILD_REF}"

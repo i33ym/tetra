@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker
+  namespace: tetra-system
+spec:
+  selector:
+    app: worker
+  ports:
+    - name: metrics
+      port: 3010
+      targetPort: 3010
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: tetra-system
+spec:
+  # No replicas here — the HorizontalPodAutoscaler owns the replica count.
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: tetra-worker-image
+          ports:
+            - name: health
+              containerPort: 3000
+            - name: metrics
+              containerPort: 3010
+          envFrom:
+            - configMapRef:
+                name: tetra-config
+            - secretRef:
+                name: tetra-secret
+          env:
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+                  divisor: "1"
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+          readinessProbe:
+            httpGet:
+              path: /v1/readiness
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/liveness
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker
+  namespace: tetra-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

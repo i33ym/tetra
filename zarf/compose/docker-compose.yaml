@@ -1,0 +1,156 @@
+# Full local stack: Postgres, MinIO, the OTel collector, Jaeger, Prometheus,
+# Grafana, plus the tetra API, the worker, and the mock processor.
+#
+#   docker compose -f zarf/compose/docker-compose.yaml up --build
+#
+# UIs: API :3000  MinIO console :9001  Jaeger :16686  Prometheus :9090  Grafana :3002
+name: tetra
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tetra
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tetra"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - jaeger
+
+  # One-shot init: run migrations and create the bucket, then exit.
+  init:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/dockerfile.tetra
+    image: tetra:local
+    entrypoint: ["/bin/sh", "-c", "./admin migrate-up && ./admin minio-bootstrap"]
+    environment:
+      TETRA_DB_HOST: postgres:5432
+      TETRA_DB_PASSWORD: postgres
+      TETRA_MINIO_ENDPOINT: minio:9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    restart: "no"
+
+  mockproc:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/dockerfile.mockproc
+    image: tetra-mockproc:local
+    environment:
+      MOCKPROC_HOST: 0.0.0.0:7000
+      MOCKPROC_FAILURE_RATE: "0.1"
+      TETRA_OTEL_HOST: otel-collector:4317
+
+  tetra:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/dockerfile.tetra
+    image: tetra:local
+    environment:
+      TETRA_DB_HOST: postgres:5432
+      TETRA_DB_PASSWORD: postgres
+      TETRA_MINIO_ENDPOINT: minio:9000
+      TETRA_OTEL_HOST: otel-collector:4317
+      TETRA_PROCESSOR_URL: http://mockproc:7000/process
+      GOMEMLIMIT: "512MiB"
+    ports:
+      - "3000:3000"
+      - "3010:3010"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      mockproc:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: zarf/docker/dockerfile.worker
+    image: tetra-worker:local
+    environment:
+      TETRA_DB_HOST: postgres:5432
+      TETRA_DB_PASSWORD: postgres
+      TETRA_MINIO_ENDPOINT: minio:9000
+      TETRA_OTEL_HOST: otel-collector:4317
+      TETRA_PROCESSOR_URL: http://mockproc:7000/process
+      GOMEMLIMIT: "256MiB"
+    # No host port mapping so the worker can be scaled to multiple replicas
+    # (docker compose up --scale worker=N); Prometheus scrapes it in-network.
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      mockproc:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  minio-data:
