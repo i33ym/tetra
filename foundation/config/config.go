@@ -124,8 +124,8 @@ func defaults() Config {
 			Password:     "postgres",
 			Host:         "localhost:5432",
 			Name:         "tetra",
-			MaxOpenConns: 10,
-			MaxIdleConns: 5,
+			MaxOpenConns: 25,
+			MaxIdleConns: 25,
 			DisableTLS:   true,
 		},
 		MinIO: MinIO{
