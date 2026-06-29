@@ -15,11 +15,6 @@ type NewPayloadText struct {
 	Text string `json:"text"`
 }
 
-// Decode implements the web.Decoder interface.
-func (n *NewPayloadText) Decode(data []byte) error {
-	return json.Unmarshal(data, n)
-}
-
 // Validate checks the data in the model is considered clean.
 func (n NewPayloadText) Validate() error {
 	if n.Text == "" {

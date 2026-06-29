@@ -30,6 +30,9 @@ import (
 // textPartLimit caps the size of an inline text form field.
 const textPartLimit = 1 << 20 // 1 MiB
 
+// maxJSONBytes caps the size of a JSON request body.
+const maxJSONBytes = 1 << 20 // 1 MiB
+
 type app struct {
 	log         *logger.Logger
 	payloadBus  *payloadbus.Business
@@ -212,7 +215,7 @@ func (a *app) content(w http.ResponseWriter, r *http.Request) {
 
 func parseJSON(r *http.Request) (payloadbus.NewPayload, error) {
 	var in NewPayloadText
-	if err := web.Decode(r, &in); err != nil {
+	if err := web.DecodeJSON(r, maxJSONBytes, &in); err != nil {
 		return payloadbus.NewPayload{}, err
 	}
 
